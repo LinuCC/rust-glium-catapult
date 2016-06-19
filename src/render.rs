@@ -1,166 +1,96 @@
 #[macro_use]
 
 use glium;
-use glium::glutin;
 use std::fs::File;
 use std::error::Error;
 use std::io::prelude::*;
 use teapot;
+use catapult;
 use image;
 use glium::backend::glutin_backend;
 use glium::Surface;
+use camera;
 
 #[derive(Copy, Clone)]
-struct Vertex {
-    position: [f32; 2],
+pub struct Vertex {
+    pub position: (f32, f32, f32),
 }
 
-pub struct Settings<'a> {
-    program: glium::Program,
-    draw_params: glium::DrawParameters<'a>,
-    rot: f32,
+#[derive(Copy, Clone)]
+pub struct Normal {
+    pub normal: (f32, f32, f32)
 }
 
 implement_vertex!(Vertex, position);
+implement_vertex!(Normal, normal);
 
-pub fn render<'a>(display: &glutin_backend::GlutinFacade, settings: &Settings<'a>) {
+pub struct Settings<'a> {
+    pub program: glium::Program,
+    pub draw_params: glium::DrawParameters<'a>,
+    pub camera: camera::CameraState,
+    light: [f32; 3],
+    pub rot: f32,
+}
 
-    use glium::{DisplayBuild, Surface};
-    use std::io::Cursor;
-    let image = image::load(Cursor::new(&include_bytes!("/home/linucc/pictures/core.png")[..]),
-                        image::PNG).unwrap().to_rgba();
-    let image_dimensions = image.dimensions();
-    let image = glium::texture::RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
+impl<'a> Settings<'a> {
+    fn perspective_matrix(&self, target: &glium::Frame) -> [[f32; 4]; 4] {
+        perspective_matrix(target)
+    }
 
-    let mut vertex_shader_src = read_file("vertex_shader.shader");
-    let mut fragment_shader_src = read_file("fragment_shader.shader");
-
-    let vertex1 = Vertex {position: [-0.5, -0.5]};
-    let vertex2 = Vertex {position: [0.0, 0.5]};
-    let vertex3 = Vertex {position: [0.5, -0.25]};
-    let shape = vec![vertex1, vertex2, vertex3];
-
-    let light = [1.0, 0.4, 0.9];
-
-    let program = glium::Program::from_source(
-            display, &vertex_shader_src, &fragment_shader_src, None
-        ).unwrap();
-
-    let params = glium::DrawParameters {
-        depth: glium::Depth {
-            test: glium::draw_parameters::DepthTest::IfLess,
-            write: true,
-            .. Default::default()
-        },
-        .. Default::default()
-    };
-
-    let positions = glium::VertexBuffer::new(display, &teapot::VERTICES).unwrap();
-    let normals = glium::VertexBuffer::new(display, &teapot::NORMALS).unwrap();
-    let indices = glium::IndexBuffer::new(display, glium::index::PrimitiveType::TrianglesList,
-                                          &teapot::INDICES).unwrap();
-
-    let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
-
-    let texture = glium::texture::Texture2d::new(display, image).unwrap();
-
-    let mut t: f32 = -0.5;
-    let mut tx: f32 = 0.005;
-    let mut rot: f32 = t;
-
-    let mut fullscreen = false;
-
-    loop {
-        if t > 1.0 || t < -1.0 {
-            tx = -tx;
-        }
-        t += tx;
-        rot = (t*t) * 30.0;
-        println!("{:?}", t);
-        let matrix = [
-            [rot.cos() * 0.01, rot.sin() * 0.01, 0.0, 0.0],
-            [-rot.sin() * 0.01, rot.cos() * 0.01, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 2.0, 1.0f32],
-        ];
-
-        let mut target = display.draw();
-        target.clear_color_and_depth((0.1, 0.1, 0.1, 1.0), 1.0);
-
-
-        // let indices = glium::index::NoIndices(
-        //     glium::index::PrimitiveType::TrianglesList
-        // );
-
-        let perspective_matrix = perspective_matrix(&target);
-        let view_matrix = view_matrix(
-            &[2.0, -1.0, 1.0], &[-2.0, 1.0, 1.0], &[0.0, 1.0, 0.0]
-        );
-
-        let uniforms = uniform! {
-            model: matrix, u_light: light, perspective: perspective_matrix,
-            view: view_matrix
-        };
-
-        target.draw(
-            (&positions, &normals), &indices, &program, &uniforms, &params
-        ).unwrap();
-
-        target.finish().unwrap();
-
-        for ev in display.poll_events() {
-            match ev {
-                glutin::Event::Closed => return,
-                glutin::Event::KeyboardInput(
-                    glutin::ElementState::Pressed, _,
-                    Some(glutin::VirtualKeyCode::Return)
-                ) => {
-                    if fullscreen {
-                        glium::glutin::WindowBuilder::new()
-                            .rebuild_glium(&display)
-                            .unwrap();
-                        fullscreen = false;
-                    }
-                    else {
-                        glium::glutin::WindowBuilder::new()
-                            .with_fullscreen(glutin::get_primary_monitor())
-                            .rebuild_glium(&display)
-                            .unwrap();
-                        fullscreen = true;
-                    }
-                },
-                _ => ()
-            }
-        }
+    fn set_aspect_ratio(&mut self, aspect_ratio: f32) {
+        self.camera.set_aspect_ratio(aspect_ratio);
     }
 }
 
-pub fn render_new<'a>(display: &glutin_backend::GlutinFacade, settings: &mut Settings<'a>) {
+struct Camera {
+    position: [f32; 3],
+    direction: [f32; 3],
+    up: [f32; 3],
+}
+
+pub struct RenderData<V, N, I> where
+    V: glium::vertex::Vertex, N: glium::vertex::Vertex, I: glium::index::Index
+{
+    pub positions: glium::VertexBuffer<V>,
+    pub normals: glium::VertexBuffer<N>,
+    pub indices: glium::IndexBuffer<I>,
+}
+
+pub struct DrawObject<V, N, I> where
+    V: glium::vertex::Vertex, N: glium::vertex::Vertex, I: glium::index::Index
+{
+    pub data: RenderData<V, N, I>,
+    pub model_matrix: [[f32; 4]; 4],
+}
+
+impl<V, N, I> DrawObject<V, N, I> where
+    V: glium::vertex::Vertex,
+    N: glium::vertex::Vertex,
+    I: glium::index::Index,
+{
+    fn draw(&self, settings: &Settings, target: &mut glium::Frame) {
+        let uniforms = uniform! {
+            model: self.model_matrix,
+            view: settings.camera.get_view(),
+            perspective: settings.perspective_matrix(&target),
+            u_light: settings.light,
+        };
+        target.draw(
+            (&self.data.positions, &self.data.normals), &self.data.indices,
+            &settings.program, &uniforms, &settings.draw_params
+        ).unwrap();
+    }
+}
+
+pub fn render<'a>(display: &glutin_backend::GlutinFacade, settings: &mut Settings<'a>) {
     settings.rot += 0.1;
     let mut target = display.draw();
-    let light = [1.4, 0.4, -0.7f32];
-    let positions = glium::VertexBuffer::new(display, &teapot::VERTICES).unwrap();
-    let normals = glium::VertexBuffer::new(display, &teapot::NORMALS).unwrap();
-    let indices = glium::IndexBuffer::new(display, glium::index::PrimitiveType::TrianglesList,
-                                          &teapot::INDICES).unwrap();
     target.clear_color_and_depth((0.1, 0.1, 0.1, 1.0), 1.0);
-    // let indices = glium::index::NoIndices(
-    //     glium::index::PrimitiveType::TrianglesList
-    // );
-    let view_matrix = view_matrix(
-        &[2.0, 1.0, 1.0], &[-2.0, -1.0, 1.0], &[0.0, 1.0, 0.0]
-    );
-    let uniforms = uniform! {
-        model: model_matrix(settings.rot),
-        view: view_matrix,
-        perspective: perspective_matrix(&target),
-        u_light: light,
-    };
+    let teapot = init_teapot(&display, &settings);
+    let catapult = catapult::init_catapult(&display, &settings);
 
-    target.draw(
-        (&positions, &normals), &indices, &settings.program, &uniforms,
-        &settings.draw_params
-    ).unwrap();
+    // teapot.draw(&settings, &mut target);
+    catapult.draw(&settings, &mut target);
 
     target.finish().unwrap();
 }
@@ -168,7 +98,9 @@ pub fn render_new<'a>(display: &glutin_backend::GlutinFacade, settings: &mut Set
 pub fn init<'a>(display: &glutin_backend::GlutinFacade) -> Settings<'a> {
     let vertex_shader_src = read_file("vertex_shader.shader");
     let fragment_shader_src = read_file("fragment_shader.shader");
-    Settings {
+    // Draw one time to get the target to create the initial perspective_matrix
+    let target = display.draw();
+    let mut settings = Settings {
         program: glium::Program::from_source(
             display, &vertex_shader_src, &fragment_shader_src, None
         ).unwrap(),
@@ -181,10 +113,37 @@ pub fn init<'a>(display: &glutin_backend::GlutinFacade) -> Settings<'a> {
             .. Default::default()
         },
         rot: 0.0,
+        camera: camera::CameraState::new(),
+        light: [1.4, 0.4, -0.7f32],
+    };
+
+    let (width, height): (u32, u32) = target.get_dimensions();
+    let aspect_ratio = height as f32 / width as f32;
+    settings.set_aspect_ratio(aspect_ratio);
+
+    target.finish().unwrap();
+    settings
+}
+
+fn init_teapot(display: &glutin_backend::GlutinFacade, settings: &Settings)
+    -> DrawObject<teapot::Vertex, teapot::Normal, u16>
+{
+    let positions = glium::VertexBuffer::new(display, &teapot::VERTICES).unwrap();
+    let normals = glium::VertexBuffer::new(display, &teapot::NORMALS).unwrap();
+    let indices = glium::IndexBuffer::new(
+        display, glium::index::PrimitiveType::TrianglesList, &teapot::INDICES
+    ).unwrap();
+    DrawObject {
+        data: RenderData {
+            positions: positions,
+            normals: normals,
+            indices: indices,
+        },
+        model_matrix: model_matrix(settings.rot),
     }
 }
 
-fn model_matrix(rot: f32) -> [[f32; 4]; 4] {
+pub fn model_matrix(rot: f32) -> [[f32; 4]; 4] {
     let rot_norm = rot % 1.0;
     let bouncy: f32 = if rot % 2.0 > 1.0 {
         rot_norm
@@ -193,10 +152,10 @@ fn model_matrix(rot: f32) -> [[f32; 4]; 4] {
     };
 
     [
-        [(bouncy / 100.) + 0.01, 0.0, 0.0, 0.0],
-        [0.0, 0.01, 0.0, 0.0],
-        [0.0, 0.0, 0.01, 0.0],
-        [0.0, 0.0, 2.0, 1.0],
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
     ]
 }
 

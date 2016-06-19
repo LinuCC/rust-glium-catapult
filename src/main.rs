@@ -4,6 +4,8 @@ extern crate image;
 
 mod render;
 mod teapot;
+mod catapult;
+mod camera;
 
 use glium::glutin;
 use glium::DisplayBuild;
@@ -14,12 +16,13 @@ fn main() {
         .with_depth_buffer(24)
         .build_glium().unwrap();
     let mut settings: render::Settings = render::init(&display);
-    // render::render(&display, &settings);
     let mut fullscreen = false;
 
     loop {
-        render::render_new(&display, &mut settings);
+        render::render(&display, &mut settings);
+        settings.camera.update();
         for ev in display.poll_events() {
+            settings.camera.process_input(&ev);
             match ev {
                 glutin::Event::Closed => return,
                 glutin::Event::KeyboardInput(
