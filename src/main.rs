@@ -1,15 +1,22 @@
 #[macro_use]
 extern crate glium;
 extern crate image;
+extern crate quaternion;
+extern crate vecmath;
 
 mod render;
 mod teapot;
 mod catapult;
 mod camera;
+mod matrix;
 
 use glium::glutin;
 use glium::DisplayBuild;
 use glium::backend::glutin_backend;
+
+/*
+ *  Remember, remember: matrices rows are columns when defined as an array!
+ */
 
 fn main() {
     let display: glutin_backend::GlutinFacade = glutin::WindowBuilder::new()

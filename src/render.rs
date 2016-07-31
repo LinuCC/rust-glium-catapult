@@ -10,6 +10,7 @@ use image;
 use glium::backend::glutin_backend;
 use glium::Surface;
 use camera;
+use matrix::mul_matrices;
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -28,12 +29,12 @@ pub struct Settings<'a> {
     pub program: glium::Program,
     pub draw_params: glium::DrawParameters<'a>,
     pub camera: camera::CameraState,
-    light: [f32; 3],
+    pub light: [f32; 3],
     pub rot: f32,
 }
 
 impl<'a> Settings<'a> {
-    fn perspective_matrix(&self, target: &glium::Frame) -> [[f32; 4]; 4] {
+    pub fn perspective_matrix(&self, target: &glium::Frame) -> [[f32; 4]; 4] {
         perspective_matrix(target)
     }
 
@@ -56,29 +57,49 @@ pub struct RenderData<V, N, I> where
     pub indices: glium::IndexBuffer<I>,
 }
 
+pub trait Drawable {
+    fn draw(&self, settings: &Settings, target: &mut glium::Frame, world_matrix: [[f32; 4]; 4])
+        -> Result<(), glium::DrawError>;
+}
+
 pub struct DrawObject<V, N, I> where
     V: glium::vertex::Vertex, N: glium::vertex::Vertex, I: glium::index::Index
 {
     pub data: RenderData<V, N, I>,
     pub model_matrix: [[f32; 4]; 4],
+    pub children: Vec<DrawObject<V, N, I>>,
 }
 
-impl<V, N, I> DrawObject<V, N, I> where
+impl<V, N, I> Drawable for DrawObject<V, N, I> where
     V: glium::vertex::Vertex,
     N: glium::vertex::Vertex,
     I: glium::index::Index,
 {
-    fn draw(&self, settings: &Settings, target: &mut glium::Frame) {
+    fn draw(
+            &self,
+            settings: &Settings,
+            target: &mut glium::Frame,
+            world_matrix: [[f32; 4]; 4]
+    )
+        -> Result<(), glium::DrawError>
+    {
+        let context_matrix = mul_matrices(world_matrix, self.model_matrix);
         let uniforms = uniform! {
-            model: self.model_matrix,
+            model: context_matrix,
             view: settings.camera.get_view(),
             perspective: settings.perspective_matrix(&target),
             u_light: settings.light,
         };
-        target.draw(
+        let res = target.draw(
             (&self.data.positions, &self.data.normals), &self.data.indices,
             &settings.program, &uniforms, &settings.draw_params
-        ).unwrap();
+        );
+        if !self.children.is_empty() {
+            for i in self.children.iter() {
+                i.draw(settings, target, context_matrix).unwrap();
+            }
+        }
+        return res;
     }
 }
 
@@ -87,10 +108,10 @@ pub fn render<'a>(display: &glutin_backend::GlutinFacade, settings: &mut Setting
     let mut target = display.draw();
     target.clear_color_and_depth((0.1, 0.1, 0.1, 1.0), 1.0);
     let teapot = init_teapot(&display, &settings);
-    let catapult = catapult::init_catapult(&display, &settings);
+    let catapult: Box<Drawable> = catapult::init_catapult(&display, &settings);
 
     // teapot.draw(&settings, &mut target);
-    catapult.draw(&settings, &mut target);
+    catapult.draw(&settings, &mut target, model_matrix(settings.rot)).unwrap();
 
     target.finish().unwrap();
 }
@@ -140,6 +161,7 @@ fn init_teapot(display: &glutin_backend::GlutinFacade, settings: &Settings)
             indices: indices,
         },
         model_matrix: model_matrix(settings.rot),
+        children: Vec::new(),
     }
 }
 

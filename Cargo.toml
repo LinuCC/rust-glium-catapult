@@ -6,3 +6,5 @@ authors = ["Pascal Ernst <pascal.cc.ernst@gmail.com>"]
 [dependencies]
 glium = "*"
 image = "*"
+quaternion = "*"
+vecmath = "*"

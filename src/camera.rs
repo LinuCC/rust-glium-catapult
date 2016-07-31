@@ -1,6 +1,8 @@
 extern crate glium;
 use glium::glutin;
 use std::f32::consts::PI;
+use quaternion;
+use vecmath;
 
 pub struct CameraState {
     aspect_ratio: f32,
@@ -21,19 +23,26 @@ pub struct CameraState {
     rotating_speed: f32,
 }
 
-fn normalize(vec: (f32, f32, f32)) -> (f32, f32, f32) {
-    let len = vec.0 * vec.0 + vec.1 * vec.1 + vec.2 * vec.2;
+fn normalize(vec: [f32; 3]) -> [f32; 3] {
+    let len = vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2];
     let len = len.sqrt();
-    (vec.0 / len, vec.1 / len, vec.2 / len)
+    [vec[0] / len, vec[1] / len, vec[2] / len]
 }
 
-fn rotate(vec: (f32, f32, f32), rot: (f32, f32, f32)) -> (f32, f32, f32) {
+// fn rotate(vec: (f32, f32, f32), rot: (f32, f32, f32)) -> (f32, f32, f32) {
+    // let vec_vec: vecmath::Vector3<f32> = normalize(vec);
+    // let vec_rot: vecmath::Vector3<f32> = normalize(rot);
+    // let q = quaternion::rotation_from_to(vec_vec, vec_rot);
+    // let rotated_vec = quaternion::rotate_vector(q, vec_vec);
+    // (rotated_vec[0], rotated_vec[1], rotated_vec[2])
+
     // Use Rodrigues formula
-    let x: f32 = 0.0 * vec.0 + -rot.2 * vec.1 + rot.1 * vec.2;
-    let y: f32 = rot.2 * vec.0 + 0.0 * vec.1 + -rot.0 * vec.2;
-    let z: f32 = -rot.1 * vec.0 + rot.0 * vec.1 + 0.0 * vec.2;
-    (x, y, z)
-}
+    // let x: f32 = 0.0 * vec.0 + -rot.2 * vec.1 + rot.1 * vec.2;
+    // let y: f32 = rot.2 * vec.0 + 0.0 * vec.1 + -rot.0 * vec.2;
+    // let z: f32 = -rot.1 * vec.0 + rot.0 * vec.1 + 0.0 * vec.2;
+    // (x, y, z)
+
+// }
 
 impl CameraState {
     pub fn new() -> CameraState {
@@ -182,14 +191,52 @@ impl CameraState {
         }
 
         if self.rotating_up {
-            self.direction.0 = {
-                (f.0 * (-self.rotating_speed).cos()) -
-                (f.1 * (-self.rotating_speed).sin())
-            };
-            self.direction.1 = {
-                (f.0 * (-self.rotating_speed).sin()) +
-                (f.1 * (-self.rotating_speed).cos())
-            };
+
+            let null_pos: vecmath::Vector3<f32> = [1.0, 0.0, 0.0];
+            let change: vecmath::Vector3<f32> = normalize([
+                null_pos[0],
+                null_pos[1] + self.rotating_speed,
+                null_pos[2],
+            ]);
+            // let q = quaternion::rotation_from_to(null_pos, change);
+            let direction_q = quaternion::rotation_from_to([1.0, 0.0, 0.0], normalize([self.direction.0, self.direction.1, self.direction.2]));
+            let local_axis: vecmath::Vector3<f32> = [0.0, 0.0, 1.0];
+            let world_axis: vecmath::Vector3<f32> = quaternion::rotate_vector(direction_q, local_axis);
+            let world_rotation = quaternion::axis_angle(world_axis, self.rotating_speed);
+            let new_direction = quaternion::mul(world_rotation, direction_q).1;
+            println!("{:?}", direction_q);
+            // let modifier = quaternion::euler_angles(0.0, PI / 2.0, 0.0);
+            // let q = quaternion::mul(coord_sys, modifier);
+            // let q = quaternion::axis_angle([self.direction.0, self.direction.1, self.direction.2], -self.rotating_speed);
+            // let dir: vecmath::Vector3<f32> = normalize([
+            //     self.direction.0, self.direction.1, self.direction.2
+            // ]);
+            // let new_direction = quaternion::rotate_vector(q, dir);
+            // println!("{:?}", new_direction);
+            self.direction = (new_direction[0], new_direction[1], new_direction[2])
+            // let vec_vec: vecmath::Vector3<f32> = normalize(vec);
+            // let vec_rot: vecmath::Vector3<f32> = normalize(rot);
+            // let q = quaternion::rotation_from_to(vec_vec, vec_rot);
+            // let rotated_vec = quaternion::rotate_vector(q, vec_vec);
+            // (rotated_vec[0], rotated_vec[1], rotated_vec[2])
+
+
+            // self.direction = rotate(
+            //     self.direction,
+            //     ((f.0 * (-self.rotating_speed).cos()) -
+            //     (f.1 * (-self.rotating_speed).sin()),
+            //     (f.0 * (-self.rotating_speed).sin()) +
+            //     (f.1 * (-self.rotating_speed).cos()),
+            //     self.direction.2)
+            // )
+            // self.direction.0 = {
+            //     (f.0 * (-self.rotating_speed).cos()) -
+            //     (f.1 * (-self.rotating_speed).sin())
+            // };
+            // self.direction.1 = {
+            //     (f.0 * (-self.rotating_speed).sin()) +
+            //     (f.1 * (-self.rotating_speed).cos())
+            // };
         }
         if self.rotating_down {
             self.direction.0 = {
