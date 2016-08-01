@@ -1,8 +1,15 @@
 extern crate glium;
 use glium::glutin;
-use std::f32::consts::PI;
 use quaternion;
 use vecmath;
+
+/**
+ * Controlls the Camera.
+ *
+ * The rotation isnt quite right, it always tries to rotate by the global axis,
+ * not the local ones.
+ * Havent got it correctly working yet, hence the commented code.
+ */
 
 pub struct CameraState {
     aspect_ratio: f32,

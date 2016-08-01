@@ -1,113 +1,22 @@
-#[macro_use]
-
 use glium;
 use std::fs::File;
-use std::error::Error;
 use std::io::prelude::*;
-use teapot;
 use catapult;
-use image;
 use glium::backend::glutin_backend;
 use glium::Surface;
 use camera;
-use matrix::mul_matrices;
-use std::rc::Rc;
+use state::Settings;
 
-#[derive(Copy, Clone)]
-pub struct Normal {
-    pub normal: (f32, f32, f32)
-}
+pub const DEFAULT_MATRIX: [[f32; 4]; 4] = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
 
-implement_vertex!(Normal, normal);
-
-pub struct Settings<'a> {
-    pub program: glium::Program,
-    pub draw_params: glium::DrawParameters<'a>,
-    pub camera: camera::CameraState,
-    pub objects: Vec<Box<Drawable>>,
-    pub light: [f32; 3],
-    pub rot: f32,
-}
-
-impl<'a> Settings<'a> {
-    pub fn perspective_matrix(&self, target: &glium::Frame) -> [[f32; 4]; 4] {
-        perspective_matrix(target)
-    }
-
-    fn set_aspect_ratio(&mut self, aspect_ratio: f32) {
-        self.camera.set_aspect_ratio(aspect_ratio);
-    }
-}
-
-pub struct RenderData<V, N, I> where
-    V: glium::vertex::Vertex, N: glium::vertex::Vertex, I: glium::index::Index
-{
-    pub positions: glium::VertexBuffer<V>,
-    pub normals: glium::VertexBuffer<N>,
-    pub indices: glium::IndexBuffer<I>,
-}
-
-pub trait Drawable {
-    fn draw(&self, settings: &Settings, target: &mut glium::Frame, world_matrix: [[f32; 4]; 4])
-        -> Result<(), glium::DrawError>;
-    fn update<'a>(&mut self, keyboard_events: &Vec<glium::glutin::Event>);
-}
-
-pub struct DrawObject<V, N, I> where
-    V: glium::vertex::Vertex, N: glium::vertex::Vertex, I: glium::index::Index
-{
-    pub data: RenderData<V, N, I>,
-    pub model_matrix: [[f32; 4]; 4],
-    pub texture: Rc<glium::texture::Texture2d>,
-    pub children: Vec<DrawObject<V, N, I>>,
-}
-
-impl<V, N, I> Drawable for DrawObject<V, N, I> where
-    V: glium::vertex::Vertex,
-    N: glium::vertex::Vertex,
-    I: glium::index::Index,
-{
-    fn update<'b>(&mut self, keyboard_events: &Vec<glium::glutin::Event>) {
-
-    }
-
-    fn draw(
-            &self,
-            settings: &Settings,
-            target: &mut glium::Frame,
-            world_matrix: [[f32; 4]; 4]
-    )
-        -> Result<(), glium::DrawError>
-    {
-        let context_matrix = mul_matrices(world_matrix, self.model_matrix);
-        let uniforms = uniform! {
-            model: context_matrix,
-            view: settings.camera.get_view(),
-            perspective: settings.perspective_matrix(&target),
-            u_light: settings.light,
-            tex: &*self.texture
-        };
-        let res = target.draw(
-            (&self.data.positions, &self.data.normals), &self.data.indices,
-            &settings.program, &uniforms, &settings.draw_params
-        );
-        if !self.children.is_empty() {
-            for i in self.children.iter() {
-                i.draw(settings, target, context_matrix).unwrap();
-            }
-        }
-        return res;
-    }
-}
-
-pub fn render<'a>(display: &glutin_backend::GlutinFacade, settings: &Settings<'a>) {
-    let mut target = display.draw();
-    target.clear_color_and_depth((0.1, 0.1, 0.1, 1.0), 1.0);
-    settings.objects[0].draw(&settings, &mut target, model_matrix(settings.rot)).unwrap();
-
-    target.finish().unwrap();
-}
-
+/**
+ * Initialize rendering (& Settings). Probably should be partially outsourced.
+ */
 pub fn init<'a>(display: &glutin_backend::GlutinFacade) -> Settings<'a> {
     let vertex_shader_src = read_file("vertex_shader.shader");
     let fragment_shader_src = read_file("fragment_shader.shader");
@@ -125,7 +34,6 @@ pub fn init<'a>(display: &glutin_backend::GlutinFacade) -> Settings<'a> {
             },
             .. Default::default()
         },
-        rot: 0.0,
         camera: camera::CameraState::new(),
         light: [1.4, 0.4, -0.7f32],
         objects: Vec::new()
@@ -139,24 +47,19 @@ pub fn init<'a>(display: &glutin_backend::GlutinFacade) -> Settings<'a> {
     target.finish().unwrap();
     settings
 }
-//
-pub fn model_matrix(rot: f32) -> [[f32; 4]; 4] {
-    let rot_norm = rot % 1.0;
-    let bouncy: f32 = if rot % 2.0 > 1.0 {
-        rot_norm
-    } else {
-        1.0 - rot_norm
-    };
 
-    [
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
+/**
+ * Renders the whole scene.
+ */
+pub fn render<'a>(display: &glutin_backend::GlutinFacade, settings: &Settings<'a>) {
+    let mut target = display.draw();
+    target.clear_color_and_depth((0.1, 0.1, 0.1, 1.0), 1.0);
+    settings.objects[0].draw(&settings, &mut target, DEFAULT_MATRIX).unwrap();
+
+    target.finish().unwrap();
 }
 
-fn perspective_matrix(target: &glium::Frame) -> [[f32; 4]; 4] {
+pub fn perspective_matrix(target: &glium::Frame) -> [[f32; 4]; 4] {
     use glium::Surface;
     let (width, height): (u32, u32) = target.get_dimensions();
     let aspect_ratio = height as f32 / width as f32;
@@ -172,45 +75,11 @@ fn perspective_matrix(target: &glium::Frame) -> [[f32; 4]; 4] {
     ]
 }
 
-fn view_matrix(position: &[f32; 3], direction: &[f32; 3], up: &[f32; 3]) -> [[f32; 4]; 4] {
-    let f = {
-        let f = direction;
-        let len = f[0] * f[0] + f[1] * f[1] + f[2] * f[2];
-        let len = len.sqrt();
-        [f[0] / len, f[1] / len, f[2] / len]
-    };
-
-    let s = [up[1] * f[2] - up[2] * f[1],
-             up[2] * f[0] - up[0] * f[2],
-             up[0] * f[1] - up[1] * f[0]];
-
-    let s_norm = {
-        let len = s[0] * s[0] + s[1] * s[1] + s[2] * s[2];
-        let len = len.sqrt();
-        [s[0] / len, s[1] / len, s[2] / len]
-    };
-
-    let u = [f[1] * s_norm[2] - f[2] * s_norm[1],
-             f[2] * s_norm[0] - f[0] * s_norm[2],
-             f[0] * s_norm[1] - f[1] * s_norm[0]];
-
-    let p = [-position[0] * s_norm[0] - position[1] * s_norm[1] - position[2] * s_norm[2],
-             -position[0] * u[0] - position[1] * u[1] - position[2] * u[2],
-             -position[0] * f[0] - position[1] * f[1] - position[2] * f[2]];
-
-    [
-        [s_norm[0], u[0], f[0], 0.0],
-        [s_norm[1], u[1], f[1], 0.0],
-        [s_norm[2], u[2], f[2], 0.0],
-        [p[0], p[1], p[2], 1.0],
-    ]
-}
-
 fn read_file(path: &str) -> String {
     let mut string = String::new();
     match File::open(path) {
         Ok(mut file) => file.read_to_string(&mut string).unwrap(),
-        Err(error) => panic!("Error loading the file {}", path),
+        Err(_) => panic!("Error loading the file {}", path),
     };
     string
 }

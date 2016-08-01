@@ -1,17 +1,24 @@
 use render::*;
 use glium;
 use glium::backend::glutin_backend;
-use glium::Surface;
 use glium::VertexBuffer;
 use glium::IndexBuffer;
 use glium::index::PrimitiveType::TrianglesList;
 use glium::glutin;
-use quaternion::*;
-use vecmath::Vector3;
 use matrix::{mul_matrices, rot_matrix_by};
 use std::f32::consts::PI;
 use quaternion;
 use std::rc::Rc;
+use state::Settings;
+use drawable::*;
+
+#[derive(Copy, Clone)]
+struct Normal {
+    pub normal: (f32, f32, f32)
+}
+
+implement_vertex!(Normal, normal);
+
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -20,13 +27,9 @@ pub struct Vertex {
 }
 implement_vertex!(Vertex, position, tex_coords);
 
-fn normalize(vec: [f32; 3]) -> [f32; 3] {
-    let len = vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2];
-    let len = len.sqrt();
-    [vec[0] / len, vec[1] / len, vec[2] / len]
-}
-
-
+/**
+ * Our catapult! Quite hardcoded right now.
+ */
 pub struct Catapult<V, N, I> where
     V: glium::vertex::Vertex, N: glium::vertex::Vertex, I: glium::index::Index
 {
@@ -42,7 +45,9 @@ pub struct Catapult<V, N, I> where
     standup_strut_right: DrawObject<V, N, I>,
     standup_strut_left: DrawObject<V, N, I>,
     throw_arm: DrawObject<V, N, I>,
+    // Contains children
     winder: DrawObject<V, N, I>,
+    // Contains children
     model_matrix: [[f32; 4]; 4],
 }
 
@@ -98,14 +103,14 @@ impl<V, N, I> Drawable for Catapult<V, N, I> where
         self.standup_strut_left.draw(settings, target, context).unwrap();
         self.stopper_plank.draw(settings, target, context).unwrap();
         let rot = quaternion::axis_angle(
-            normalize([0.0, 0.0, 1.0]) as Vector3<f32>, self.throw_rotation
+            [0.0, 0.0, 1.0], self.throw_rotation
         );
         self.throw_arm.draw(
             settings, target,
             mul_matrices(context, rot_matrix_by(&rot, [3.65, 0.5, 0.0]))
         ).unwrap();
         let rot = quaternion::axis_angle(
-            normalize([0.0, 0.0, 1.0]) as Vector3<f32>, self.throw_rotation * 4.0
+            [0.0, 0.0, 1.0], self.throw_rotation * 4.0
         );
         self.winder.draw(
             settings, target,
@@ -115,7 +120,10 @@ impl<V, N, I> Drawable for Catapult<V, N, I> where
     }
 }
 
-pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings)
+/**
+ * Generates the catapult.
+ */
+pub fn init_catapult(display: &glutin_backend::GlutinFacade, _: &Settings)
     -> Box<Drawable>
 {
     use std::io::Cursor;
@@ -133,7 +141,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
     );
 
     Box::new(Catapult {
-        model_matrix: model_matrix(settings.rot),
+        model_matrix: DEFAULT_MATRIX,
         fat_plank_right: DrawObject {
             data: RenderData {
                 positions: VertexBuffer::new(
@@ -144,7 +152,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                     display, TrianglesList, &RECTANGLE_INDICES
                 ).unwrap(),
             },
-            model_matrix: model_matrix(settings.rot),
+            model_matrix: DEFAULT_MATRIX,
             texture: texture.clone(),
             children: Vec::new(),
         },
@@ -158,7 +166,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                         display, TrianglesList, &RECTANGLE_INDICES
                     ).unwrap(),
             },
-            model_matrix: model_matrix(settings.rot),
+            model_matrix: DEFAULT_MATRIX,
             texture: texture.clone(),
             children: Vec::new(),
         },
@@ -172,7 +180,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                     display, TrianglesList, &RECTANGLE_INDICES
                 ).unwrap(),
             },
-            model_matrix: model_matrix(settings.rot),
+            model_matrix: DEFAULT_MATRIX,
             texture: texture.clone(),
             children: Vec::new(),
         },
@@ -186,7 +194,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                     display, TrianglesList, &RECTANGLE_INDICES
                 ).unwrap(),
             },
-            model_matrix: model_matrix(settings.rot),
+            model_matrix: DEFAULT_MATRIX,
             texture: texture.clone(),
             children: Vec::new(),
         },
@@ -200,7 +208,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                     display, TrianglesList, &RECTANGLE_INDICES
                 ).unwrap(),
             },
-            model_matrix: model_matrix(settings.rot),
+            model_matrix: DEFAULT_MATRIX,
             texture: texture.clone(),
             children: Vec::new(),
         },
@@ -252,13 +260,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                     display, TrianglesList, &RECTANGLE_INDICES
                 ).unwrap(),
             },
-            // model_matrix: model_matrix(settings.rot),
-            model_matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
+            model_matrix: DEFAULT_MATRIX,
             texture: texture.clone(),
             children: vec![
                 DrawObject {
@@ -271,7 +273,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                             display, TrianglesList, &RECTANGLE_INDICES
                         ).unwrap(),
                     },
-                    model_matrix: model_matrix(settings.rot),
+                    model_matrix: DEFAULT_MATRIX,
                     texture: texture.clone(),
                     children: Vec::new(),
                 },
@@ -285,7 +287,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                             display, TrianglesList, &RECTANGLE_INDICES
                         ).unwrap(),
                     },
-                    model_matrix: model_matrix(settings.rot),
+                    model_matrix: DEFAULT_MATRIX,
                     texture: texture.clone(),
                     children: Vec::new(),
                 },
@@ -301,13 +303,8 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                     display, TrianglesList, &RECTANGLE_INDICES
                 ).unwrap(),
             },
-            // model_matrix: model_matrix(settings.rot),
-            model_matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
+            // model_matrix: DEFAULT_MATRIX,
+            model_matrix: DEFAULT_MATRIX,
             texture: texture.clone(),
             children: vec![
                 DrawObject {
@@ -320,7 +317,7 @@ pub fn init_catapult(display: &glutin_backend::GlutinFacade, settings: &Settings
                             display, TrianglesList, &RECTANGLE_INDICES
                         ).unwrap(),
                     },
-                    model_matrix: model_matrix(settings.rot),
+                    model_matrix: DEFAULT_MATRIX,
                     texture: texture.clone(),
                     children: Vec::new(),
                 },
