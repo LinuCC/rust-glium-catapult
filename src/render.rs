@@ -11,24 +11,20 @@ use glium::backend::glutin_backend;
 use glium::Surface;
 use camera;
 use matrix::mul_matrices;
-
-#[derive(Copy, Clone)]
-pub struct Vertex {
-    pub position: (f32, f32, f32),
-}
+use std::rc::Rc;
 
 #[derive(Copy, Clone)]
 pub struct Normal {
     pub normal: (f32, f32, f32)
 }
 
-implement_vertex!(Vertex, position);
 implement_vertex!(Normal, normal);
 
 pub struct Settings<'a> {
     pub program: glium::Program,
     pub draw_params: glium::DrawParameters<'a>,
     pub camera: camera::CameraState,
+    pub objects: Vec<Box<Drawable>>,
     pub light: [f32; 3],
     pub rot: f32,
 }
@@ -43,12 +39,6 @@ impl<'a> Settings<'a> {
     }
 }
 
-struct Camera {
-    position: [f32; 3],
-    direction: [f32; 3],
-    up: [f32; 3],
-}
-
 pub struct RenderData<V, N, I> where
     V: glium::vertex::Vertex, N: glium::vertex::Vertex, I: glium::index::Index
 {
@@ -60,6 +50,7 @@ pub struct RenderData<V, N, I> where
 pub trait Drawable {
     fn draw(&self, settings: &Settings, target: &mut glium::Frame, world_matrix: [[f32; 4]; 4])
         -> Result<(), glium::DrawError>;
+    fn update<'a>(&mut self, keyboard_events: &Vec<glium::glutin::Event>);
 }
 
 pub struct DrawObject<V, N, I> where
@@ -67,6 +58,7 @@ pub struct DrawObject<V, N, I> where
 {
     pub data: RenderData<V, N, I>,
     pub model_matrix: [[f32; 4]; 4],
+    pub texture: Rc<glium::texture::Texture2d>,
     pub children: Vec<DrawObject<V, N, I>>,
 }
 
@@ -75,6 +67,10 @@ impl<V, N, I> Drawable for DrawObject<V, N, I> where
     N: glium::vertex::Vertex,
     I: glium::index::Index,
 {
+    fn update<'b>(&mut self, keyboard_events: &Vec<glium::glutin::Event>) {
+
+    }
+
     fn draw(
             &self,
             settings: &Settings,
@@ -89,6 +85,7 @@ impl<V, N, I> Drawable for DrawObject<V, N, I> where
             view: settings.camera.get_view(),
             perspective: settings.perspective_matrix(&target),
             u_light: settings.light,
+            tex: &*self.texture
         };
         let res = target.draw(
             (&self.data.positions, &self.data.normals), &self.data.indices,
@@ -103,15 +100,10 @@ impl<V, N, I> Drawable for DrawObject<V, N, I> where
     }
 }
 
-pub fn render<'a>(display: &glutin_backend::GlutinFacade, settings: &mut Settings<'a>) {
-    settings.rot += 0.1;
+pub fn render<'a>(display: &glutin_backend::GlutinFacade, settings: &Settings<'a>) {
     let mut target = display.draw();
     target.clear_color_and_depth((0.1, 0.1, 0.1, 1.0), 1.0);
-    let teapot = init_teapot(&display, &settings);
-    let catapult: Box<Drawable> = catapult::init_catapult(&display, &settings);
-
-    // teapot.draw(&settings, &mut target);
-    catapult.draw(&settings, &mut target, model_matrix(settings.rot)).unwrap();
+    settings.objects[0].draw(&settings, &mut target, model_matrix(settings.rot)).unwrap();
 
     target.finish().unwrap();
 }
@@ -136,35 +128,18 @@ pub fn init<'a>(display: &glutin_backend::GlutinFacade) -> Settings<'a> {
         rot: 0.0,
         camera: camera::CameraState::new(),
         light: [1.4, 0.4, -0.7f32],
+        objects: Vec::new()
     };
 
     let (width, height): (u32, u32) = target.get_dimensions();
     let aspect_ratio = height as f32 / width as f32;
     settings.set_aspect_ratio(aspect_ratio);
+    settings.objects = vec![catapult::init_catapult(&display, &settings)];
 
     target.finish().unwrap();
     settings
 }
-
-fn init_teapot(display: &glutin_backend::GlutinFacade, settings: &Settings)
-    -> DrawObject<teapot::Vertex, teapot::Normal, u16>
-{
-    let positions = glium::VertexBuffer::new(display, &teapot::VERTICES).unwrap();
-    let normals = glium::VertexBuffer::new(display, &teapot::NORMALS).unwrap();
-    let indices = glium::IndexBuffer::new(
-        display, glium::index::PrimitiveType::TrianglesList, &teapot::INDICES
-    ).unwrap();
-    DrawObject {
-        data: RenderData {
-            positions: positions,
-            normals: normals,
-            indices: indices,
-        },
-        model_matrix: model_matrix(settings.rot),
-        children: Vec::new(),
-    }
-}
-
+//
 pub fn model_matrix(rot: f32) -> [[f32; 4]; 4] {
     let rot_norm = rot % 1.0;
     let bouncy: f32 = if rot % 2.0 > 1.0 {

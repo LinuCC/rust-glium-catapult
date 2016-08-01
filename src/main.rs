@@ -26,9 +26,13 @@ fn main() {
     let mut fullscreen = false;
 
     loop {
-        render::render(&display, &mut settings);
+        render::render(&display, &settings);
+        let mut keyboard_events = display.poll_events().collect::<Vec<_>>();
+        for renderable in settings.objects.iter_mut() {
+            renderable.update(&keyboard_events);
+        }
         settings.camera.update();
-        for ev in display.poll_events() {
+        for ev in keyboard_events {
             settings.camera.process_input(&ev);
             match ev {
                 glutin::Event::Closed => return,

@@ -192,19 +192,19 @@ impl CameraState {
 
         if self.rotating_up {
 
-            let null_pos: vecmath::Vector3<f32> = [1.0, 0.0, 0.0];
-            let change: vecmath::Vector3<f32> = normalize([
-                null_pos[0],
-                null_pos[1] + self.rotating_speed,
-                null_pos[2],
-            ]);
+            // let null_pos: vecmath::Vector3<f32> = [1.0, 0.0, 0.0];
+            // let change: vecmath::Vector3<f32> = normalize([
+            //     null_pos[0],
+            //     null_pos[1] + self.rotating_speed,
+            //     null_pos[2],
+            // ]);
             // let q = quaternion::rotation_from_to(null_pos, change);
-            let direction_q = quaternion::rotation_from_to([1.0, 0.0, 0.0], normalize([self.direction.0, self.direction.1, self.direction.2]));
-            let local_axis: vecmath::Vector3<f32> = [0.0, 0.0, 1.0];
-            let world_axis: vecmath::Vector3<f32> = quaternion::rotate_vector(direction_q, local_axis);
-            let world_rotation = quaternion::axis_angle(world_axis, self.rotating_speed);
-            let new_direction = quaternion::mul(world_rotation, direction_q).1;
-            println!("{:?}", direction_q);
+            // let direction_q = quaternion::rotation_from_to([1.0, 0.0, 0.0], normalize([self.direction.0, self.direction.1, self.direction.2]));
+            // let local_axis: vecmath::Vector3<f32> = [0.0, 0.0, 1.0];
+            // let world_axis: vecmath::Vector3<f32> = quaternion::rotate_vector(direction_q, local_axis);
+            // let world_rotation = quaternion::axis_angle(world_axis, self.rotating_speed);
+            // let new_direction = quaternion::mul(world_rotation, direction_q).1;
+            // println!("{:?}", direction_q);
             // let modifier = quaternion::euler_angles(0.0, PI / 2.0, 0.0);
             // let q = quaternion::mul(coord_sys, modifier);
             // let q = quaternion::axis_angle([self.direction.0, self.direction.1, self.direction.2], -self.rotating_speed);
@@ -213,7 +213,7 @@ impl CameraState {
             // ]);
             // let new_direction = quaternion::rotate_vector(q, dir);
             // println!("{:?}", new_direction);
-            self.direction = (new_direction[0], new_direction[1], new_direction[2])
+            // self.direction = (new_direction[0], new_direction[1], new_direction[2])
             // let vec_vec: vecmath::Vector3<f32> = normalize(vec);
             // let vec_rot: vecmath::Vector3<f32> = normalize(rot);
             // let q = quaternion::rotation_from_to(vec_vec, vec_rot);
@@ -229,14 +229,14 @@ impl CameraState {
             //     (f.1 * (-self.rotating_speed).cos()),
             //     self.direction.2)
             // )
-            // self.direction.0 = {
-            //     (f.0 * (-self.rotating_speed).cos()) -
-            //     (f.1 * (-self.rotating_speed).sin())
-            // };
-            // self.direction.1 = {
-            //     (f.0 * (-self.rotating_speed).sin()) +
-            //     (f.1 * (-self.rotating_speed).cos())
-            // };
+            self.direction.0 = {
+                (f.0 * (-self.rotating_speed).cos()) -
+                (f.1 * (-self.rotating_speed).sin())
+            };
+            self.direction.1 = {
+                (f.0 * (-self.rotating_speed).sin()) +
+                (f.1 * (-self.rotating_speed).cos())
+            };
         }
         if self.rotating_down {
             self.direction.0 = {
